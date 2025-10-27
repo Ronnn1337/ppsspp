@@ -591,6 +591,10 @@ int ElfReader::LoadInto(u32 loadAddress, bool fromTop)
 			int sectionToModify = s->sh_info;
 			if (sectionToModify >= 0)
 			{
+				if (sectionToModify >= GetNumSections()) {
+					WARN_LOG_REPORT(Log::Loader, "sectionToModify = %i out of range for relocation section %i", sectionToModify, i);
+					continue;
+				}
 				if (!(sections[sectionToModify].sh_flags & SHF_ALLOC))
 				{
 					ERROR_LOG_REPORT(Log::Loader, "Trying to relocate non-loaded section %s", GetSectionName(sectionToModify));
@@ -626,6 +630,10 @@ int ElfReader::LoadInto(u32 loadAddress, bool fromTop)
 				int sectionToModify = s->sh_info;
 				if (sectionToModify >= 0)
 				{
+					if (sectionToModify >= GetNumSections()) {
+						WARN_LOG_REPORT(Log::Loader, "sectionToModify = %i out of range for SHT_REL section %i", sectionToModify, i);
+						continue;
+					}
 					if (!(sections[sectionToModify].sh_flags & SHF_ALLOC))
 					{
 						// Generally stuff like debug info. We don't need it.
