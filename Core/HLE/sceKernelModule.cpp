@@ -2629,3 +2629,16 @@ void Register_ModuleMgrForUser() {
 void Register_ModuleMgrForKernel() {
 	RegisterHLEModule("ModuleMgrForKernel", ARRAY_SIZE(ModuleMgrForKernel), ModuleMgrForKernel);		
 }
+
+
+// === FUZZ BRIDGE (fuzz-only) ===============================================
+#ifdef FUZZING_BUILD
+extern "C" PSPModule *FUZZ_Bridge_LoadELFFromPtr(const u8 *ptr, size_t elfSize) {
+    u32 magic = 0;
+    u32 error = 0;
+    std::string err_str;
+    std::string_view fname = "/ctf/work/AVR2025/ppsspp/fuzz_test1/ppsspp/Tools/SaveTool/kernelcall.prx";
+    return __KernelLoadELFFromPtr(ptr, elfSize, 0, false, &err_str, &magic, fname, error);
+}
+#endif
+// =========================================================================== 

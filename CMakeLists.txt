@@ -884,6 +884,8 @@ add_library(Common STATIC
 	Common/UI/ViewGroup.h
 	Common/UI/ScrollView.cpp
 	Common/UI/ScrollView.h
+	Common/UI/TabHolder.cpp
+	Common/UI/TabHolder.h
 	Common/UI/PopupScreens.cpp
 	Common/UI/PopupScreens.h
 	Common/BitScan.h
@@ -2470,6 +2472,10 @@ add_library(${CoreLibName} ${CoreLinkType}
 	ext/loongarch-disasm.h
 	${CMAKE_CURRENT_BINARY_DIR}/git-version.cpp
 )
+if(FUZZING_BUILD)
+    target_sources(Core PRIVATE Core/FuzzInitBridge.cpp)
+    target_compile_definitions(Core PRIVATE FUZZING_BUILD)
+endif()
 
 if(ANDROID)
 	set(CoreExtraLibs ${CoreExtraLibs} android)
@@ -2752,6 +2758,7 @@ if(ANDROID AND ARM64)
 endif()
 
 list(APPEND LinkCommon ${CoreLibName} ${CMAKE_THREAD_LIBS_INIT})
+add_subdirectory(fuzz)
 
 if(WIN32)
 	list(APPEND LinkCommon kernel32 user32 gdi32 shell32 comctl32 dsound xinput winmm dinput8 ole32 winspool ksuser dwmapi mf uxtheme mfplat mfreadwrite mfuuid shlwapi setupapi hid)
