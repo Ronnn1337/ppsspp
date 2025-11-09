@@ -1,6 +1,6 @@
 Command line used to find this crash:
 
-afl-fuzz -i - -o output -S fuzzer2 -- ./build/PPSSPPHeadless @@
+afl-fuzz -i input_unique/ -o output -S fuzzer2 -- ./build/PPSSPPHeadless @@
 
 If you can't reproduce a bug outside of afl-fuzz, be sure to set the same
 memory limit. The limit used for this fuzzing session was 0 B.
