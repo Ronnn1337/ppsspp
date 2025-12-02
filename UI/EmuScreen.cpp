@@ -70,6 +70,7 @@ using namespace std::placeholders;
 #include "Core/HLE/sceCtrl.h"
 #include "Core/HLE/sceSas.h"
 #include "Core/HLE/sceNet.h"
+#include "Core/HLE/sceDisplay.h"
 #include "Core/HLE/sceNetAdhoc.h"
 #include "Core/Debugger/SymbolMap.h"
 #include "Core/RetroAchievements.h"
@@ -84,10 +85,11 @@ using namespace std::placeholders;
 #include "UI/GamepadEmu.h"
 #include "UI/PauseScreen.h"
 #include "UI/MainScreen.h"
+#include "UI/Background.h"
 #include "UI/EmuScreen.h"
 #include "UI/DevScreens.h"
 #include "UI/GameInfoCache.h"
-#include "UI/MiscScreens.h"
+#include "UI/BaseScreens.h"
 #include "UI/ControlMappingScreen.h"
 #include "UI/DisplayLayoutScreen.h"
 #include "UI/GameSettingsScreen.h"
@@ -123,8 +125,8 @@ static void AssertCancelCallback(const char *message, void *userdata) {
 }
 
 // Handles control rotation due to internal screen rotation.
-static void SetPSPAnalog(int stick, float x, float y) {
-	switch (g_Config.iInternalScreenRotation) {
+static void SetPSPAnalog(int iInternalScreenRotation, int stick, float x, float y) {
+	switch (iInternalScreenRotation) {
 	case ROTATION_LOCKED_HORIZONTAL:
 		// Standard rotation. No change.
 		break;
@@ -916,17 +918,29 @@ void EmuScreen::ProcessVKey(VirtKey virtKey) {
 		break;
 
 	case VIRTKEY_SCREEN_ROTATION_VERTICAL:
-		g_Config.iInternalScreenRotation = ROTATION_LOCKED_VERTICAL;
+	{
+		DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(GetDeviceOrientation());
+		config.iInternalScreenRotation = ROTATION_LOCKED_VERTICAL;
 		break;
+	}
 	case VIRTKEY_SCREEN_ROTATION_VERTICAL180:
-		g_Config.iInternalScreenRotation = ROTATION_LOCKED_VERTICAL180;
+	{
+		DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(GetDeviceOrientation());
+		config.iInternalScreenRotation = ROTATION_LOCKED_VERTICAL180;
 		break;
+	}
 	case VIRTKEY_SCREEN_ROTATION_HORIZONTAL:
-		g_Config.iInternalScreenRotation = ROTATION_LOCKED_HORIZONTAL;
+	{
+		DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(GetDeviceOrientation());
+		config.iInternalScreenRotation = ROTATION_LOCKED_HORIZONTAL;
 		break;
+	}
 	case VIRTKEY_SCREEN_ROTATION_HORIZONTAL180:
-		g_Config.iInternalScreenRotation = ROTATION_LOCKED_HORIZONTAL180;
+	{
+		DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(GetDeviceOrientation());
+		config.iInternalScreenRotation = ROTATION_LOCKED_HORIZONTAL180;
 		break;
+	}
 
 	case VIRTKEY_TOGGLE_WLAN:
 		// Let's not allow the user to toggle wlan while connected, could get confusing.
@@ -988,9 +1002,10 @@ void EmuScreen::ProcessVKey(VirtKey virtKey) {
 			std::string confirmExitMessage = GetConfirmExitMessage();
 			if (!confirmExitMessage.empty()) {
 				auto di = GetI18NCategory(I18NCat::DIALOG);
+				auto mm = GetI18NCategory(I18NCat::MAINMENU);
 				confirmExitMessage += '\n';
 				confirmExitMessage += di->T("Are you sure you want to exit?");
-				screenManager()->push(new PromptScreen(gamePath_, confirmExitMessage, di->T("Yes"), di->T("No"), [=](bool result) {
+				screenManager()->push(new UI::MessagePopupScreen(mm->T("Exit"), confirmExitMessage, di->T("Yes"), di->T("No"), [=](bool result) {
 					if (result) {
 						System_ExitApp();
 					}
@@ -1184,11 +1199,20 @@ public:
 		if (ginfo->Ready(GameInfoFlags::PIC1) && ginfo->pic1.texture) {
 			Draw::Texture *texture = ginfo->pic1.texture;
 			if (texture) {
+				const DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(g_display.GetDeviceOrientation());
+				// Similar to presentation, we want to put the game PIC1 in the same region of the screen.
+				FRect frame = GetScreenFrame(config.bIgnoreScreenInsets, g_display.pixel_xres, g_display.pixel_yres);
+				FRect rc;
+				CalculateDisplayOutputRect(config, &rc, texture->Width(), texture->Height(), frame, config.iInternalScreenRotation);
+
+				// Need to adjust for DPI here since we're still in the UI coordinate space here, not the pixel coordinate space used for in-game presentation.
+				Bounds bounds(rc.x * g_display.dpi_scale_x, rc.y * g_display.dpi_scale_y, rc.w * g_display.dpi_scale_x, rc.h * g_display.dpi_scale_y);
+
 				dc.GetDrawContext()->BindTexture(0, texture);
 
 				double loadTime = ginfo->pic1.timeLoaded;
 				uint32_t color = alphaMul(color_, ease((time_now_d() - loadTime) * 3));
-				dc.Draw()->DrawTexRect(dc.GetBounds(), 0, 0, 1, 1, color);
+				dc.Draw()->DrawTexRect(bounds, 0, 0, 1, 1, color);
 				dc.Flush();
 				dc.RebindTexture();
 			}
@@ -1212,15 +1236,15 @@ protected:
 static UI::AnchorLayoutParams *AnchorInCorner(const Bounds &bounds, int corner, float xOffset, float yOffset) {
 	using namespace UI;
 	switch ((ScreenEdgePosition)g_Config.iChatButtonPosition) {
-	case ScreenEdgePosition::BOTTOM_LEFT:   return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, NONE, NONE, yOffset, true);
-	case ScreenEdgePosition::BOTTOM_CENTER: return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, bounds.centerX(), NONE, NONE, yOffset, true);
-	case ScreenEdgePosition::BOTTOM_RIGHT:  return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, NONE, NONE, xOffset, yOffset, true);
-	case ScreenEdgePosition::TOP_LEFT:      return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, yOffset, NONE, NONE, true);
-	case ScreenEdgePosition::TOP_CENTER:    return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, bounds.centerX(), yOffset, NONE, NONE, true);
-	case ScreenEdgePosition::TOP_RIGHT:     return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, NONE, yOffset, xOffset, NONE, true);
-	case ScreenEdgePosition::CENTER_LEFT:   return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, bounds.centerY(), NONE, NONE, true);
-	case ScreenEdgePosition::CENTER_RIGHT:  return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, NONE, bounds.centerY(), xOffset, NONE, true);
-	default: return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, NONE, NONE, yOffset, true);
+	case ScreenEdgePosition::BOTTOM_LEFT:   return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, NONE, NONE, yOffset, Centering::Both);
+	case ScreenEdgePosition::BOTTOM_CENTER: return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, bounds.centerX(), NONE, NONE, yOffset, Centering::Both);
+	case ScreenEdgePosition::BOTTOM_RIGHT:  return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, NONE, NONE, xOffset, yOffset, Centering::Both);
+	case ScreenEdgePosition::TOP_LEFT:      return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, yOffset, NONE, NONE, Centering::Both);
+	case ScreenEdgePosition::TOP_CENTER:    return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, bounds.centerX(), yOffset, NONE, NONE, Centering::Both);
+	case ScreenEdgePosition::TOP_RIGHT:     return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, NONE, yOffset, xOffset, NONE, Centering::Both);
+	case ScreenEdgePosition::CENTER_LEFT:   return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, bounds.centerY(), NONE, NONE, Centering::Both);
+	case ScreenEdgePosition::CENTER_RIGHT:  return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, NONE, bounds.centerY(), xOffset, NONE, Centering::Both);
+	default: return new AnchorLayoutParams(WRAP_CONTENT, WRAP_CONTENT, xOffset, NONE, NONE, yOffset, Centering::Both);
 	}
 }
 
@@ -1231,18 +1255,19 @@ void EmuScreen::CreateViews() {
 	auto dev = GetI18NCategory(I18NCat::DEVELOPER);
 	auto sc = GetI18NCategory(I18NCat::SCREEN);
 
+	const DeviceOrientation deviceOrientation = GetDeviceOrientation();
+
+	TouchControlConfig &touch = g_Config.GetTouchControlsConfig(deviceOrientation);
+
 	const Bounds &bounds = screenManager()->getUIContext()->GetLayoutBounds();
-	InitPadLayout(bounds.w, bounds.h);
+	InitPadLayout(&touch, deviceOrientation, bounds.w, bounds.h);
 
-	// Devices without a back button like iOS need an on-screen touch back button.
-	bool showPauseButton = !System_GetPropertyBool(SYSPROP_HAS_BACK_BUTTON) || g_Config.bShowTouchPause;
-
-	root_ = CreatePadLayout(bounds.w, bounds.h, &pauseTrigger_, showPauseButton, &controlMapper_);
+	root_ = CreatePadLayout(touch, bounds.w, bounds.h, &pauseTrigger_, &controlMapper_);
 	if (g_Config.bShowDeveloperMenu) {
 		root_->Add(new Button(dev->T("DevMenu")))->OnClick.Handle(this, &EmuScreen::OnDevTools);
 	}
 
-	LinearLayout *buttons = new LinearLayout(Orientation::ORIENT_HORIZONTAL, new AnchorLayoutParams(bounds.centerX(), NONE, NONE, 60, true));
+	LinearLayout *buttons = new LinearLayout(Orientation::ORIENT_HORIZONTAL, new AnchorLayoutParams(bounds.centerX(), NONE, NONE, 60, Centering::Both));
 	buttons->SetSpacing(20.0f);
 	root_->Add(buttons);
 
@@ -1270,9 +1295,11 @@ void EmuScreen::CreateViews() {
 	});
 	backButton_->SetVisibility(V_GONE);
 
-	cardboardDisableButton_ = root_->Add(new Button(sc->T("Cardboard VR OFF"), new AnchorLayoutParams(bounds.centerX(), NONE, NONE, 30, true)));
-	cardboardDisableButton_->OnClick.Add([](UI::EventParams &) {
-		g_Config.bEnableCardboardVR = false;
+	cardboardDisableButton_ = root_->Add(new Button(sc->T("Cardboard VR OFF"), new AnchorLayoutParams(bounds.centerX(), NONE, NONE, 30, Centering::Both)));
+	DeviceOrientation orientation = GetDeviceOrientation();
+	cardboardDisableButton_->OnClick.Add([deviceOrientation](UI::EventParams &) {
+		DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(deviceOrientation);
+		config.bEnableCardboardVR = false;
 	});
 	cardboardDisableButton_->SetVisibility(V_GONE);
 	cardboardDisableButton_->SetScale(0.65f);  // make it smaller - this button can be in the way otherwise.
@@ -1291,7 +1318,7 @@ void EmuScreen::CreateViews() {
 		chatMenu_->SetVisibility(UI::V_GONE);
 	}
 
-	saveStatePreview_ = new AsyncImageFileView(Path(), IS_FIXED, new AnchorLayoutParams(bounds.centerX(), 100, NONE, NONE, true));
+	saveStatePreview_ = new AsyncImageFileView(Path(), IS_FIXED, new AnchorLayoutParams(bounds.centerX(), 100, NONE, NONE, Centering::Both));
 	saveStatePreview_->SetFixedSize(160, 90);
 	saveStatePreview_->SetColor(0x90FFFFFF);
 	saveStatePreview_->SetVisibility(V_GONE);
@@ -1307,7 +1334,7 @@ void EmuScreen::CreateViews() {
 		ImageID("I_TRIANGLE"),
 	};
 
-	Spinner *loadingSpinner = root_->Add(new Spinner(symbols, ARRAY_SIZE(symbols), new AnchorLayoutParams(NONE, NONE, 45, 45, true)));
+	Spinner *loadingSpinner = root_->Add(new Spinner(symbols, ARRAY_SIZE(symbols), new AnchorLayoutParams(NONE, NONE, 45, 45, Centering::Both)));
 	loadingSpinner_ = loadingSpinner;
 
 	loadingBG->SetTag("LoadingBG");
@@ -1446,7 +1473,8 @@ void EmuScreen::update() {
 
 	double now = time_now_d();
 
-	controlMapper_.Update(now);
+	DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(GetDeviceOrientation());
+	controlMapper_.Update(config, now);
 
 	if (saveStatePreview_ && !bootPending_) {
 		int currentSlot = SaveState::GetCurrentSlot();
@@ -1576,6 +1604,8 @@ ScreenRenderFlags EmuScreen::render(ScreenRenderMode mode) {
 
 	bool framebufferBound = false;
 
+	const DeviceOrientation orientation = GetDeviceOrientation();
+
 	if (mode & ScreenRenderMode::FIRST) {
 		// Actually, always gonna be first when it exists (?)
 
@@ -1604,7 +1634,10 @@ ScreenRenderFlags EmuScreen::render(ScreenRenderMode mode) {
 		framebufferBound = true;
 	}
 
-	g_OSD.NudgeSidebar();
+	g_OSD.NudgeIngameNotifications();
+
+	const DisplayLayoutConfig &displayLayoutConfig = g_Config.GetDisplayLayoutConfig(orientation);
+	__DisplaySetDisplayLayoutConfig(displayLayoutConfig);
 
 	if (mode & ScreenRenderMode::TOP) {
 		System_Notify(SystemNotification::KEEP_SCREEN_AWAKE);
@@ -1613,8 +1646,8 @@ ScreenRenderFlags EmuScreen::render(ScreenRenderMode mode) {
 		// Just to make sure.
 		if (PSP_IsInited() && !skipBufferEffects) {
 			_dbg_assert_(gpu);
-			gpu->BeginHostFrame();
-			gpu->CopyDisplayToOutput(true);
+			gpu->BeginHostFrame(displayLayoutConfig);
+			gpu->CopyDisplayToOutput(displayLayoutConfig, true);
 			gpu->EndHostFrame();
 		}
 		if (gpu && gpu->PresentedThisFrame()) {
@@ -1680,7 +1713,7 @@ ScreenRenderFlags EmuScreen::render(ScreenRenderMode mode) {
 	uint32_t clearColor = 0;
 	if (!blockedExecution) {
 		if (gpu) {
-			gpu->BeginHostFrame();
+			gpu->BeginHostFrame(displayLayoutConfig);
 		}
 		if (SaveState::Process()) {
 			// We might have lost the framebuffer bind if we had one, due to a readback.
@@ -1715,7 +1748,7 @@ ScreenRenderFlags EmuScreen::render(ScreenRenderMode mode) {
 				// This won't work in non-buffered, but that's fine.
 				if (!framebufferBound && PSP_IsInited()) {
 					// draw->BindFramebufferAsRenderTarget(nullptr, { RPAction::CLEAR, RPAction::CLEAR, RPAction::CLEAR, clearColor }, "EmuScreen_Stepping");
-					gpu->CopyDisplayToOutput(true);
+					gpu->CopyDisplayToOutput(displayLayoutConfig, true);
 					framebufferBound = true;
 				}
 			}
@@ -1800,7 +1833,7 @@ ScreenRenderFlags EmuScreen::render(ScreenRenderMode mode) {
 
 	if (hasVisibleUI()) {
 		draw->SetViewport(viewport);
-		cardboardDisableButton_->SetVisibility(g_Config.bEnableCardboardVR ? UI::V_VISIBLE : UI::V_GONE);
+		cardboardDisableButton_->SetVisibility(displayLayoutConfig.bEnableCardboardVR ? UI::V_VISIBLE : UI::V_GONE);
 		renderUI();
 	}
 
@@ -1835,9 +1868,9 @@ void EmuScreen::runImDebugger() {
 
 			// Read the TTF font
 			size_t propSize = 0;
-			uint8_t *propFontData = g_VFS.ReadFile("Roboto-Condensed.ttf", &propSize);
+			const uint8_t *propFontData = g_VFS.ReadFile("Roboto_Condensed-Regular.ttf", &propSize);
 			size_t fixedSize = 0;
-			uint8_t *fixedFontData = g_VFS.ReadFile("Inconsolata-Medium.ttf", &fixedSize);
+			const uint8_t *fixedFontData = g_VFS.ReadFile("Inconsolata-Regular.ttf", &fixedSize);
 			// This call works even if fontData is nullptr, in which case the font just won't get loaded.
 			// This takes ownership of the font array.
 			ImGui_ImplThin3d_Init(draw, propFontData, propSize, fixedFontData, fixedSize);
@@ -1906,7 +1939,8 @@ bool EmuScreen::hasVisibleUI() {
 		return true;
 	if (!g_OSD.IsEmpty() || g_Config.bShowTouchControls || g_Config.iShowStatusFlags != 0)
 		return true;
-	if (g_Config.bEnableCardboardVR || g_Config.bEnableNetworkChat)
+	DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(GetDeviceOrientation());
+	if (config.bEnableCardboardVR || g_Config.bEnableNetworkChat)
 		return true;
 	if (g_Config.bShowGPOLEDs)
 		return true;
@@ -1941,7 +1975,7 @@ void EmuScreen::renderUI() {
 	thin3d->SetViewport(viewport);
 
 	if (root_) {
-		UI::LayoutViewHierarchy(*ctx, root_, false);
+		UI::LayoutViewHierarchy(*ctx, RootMargins(), root_, false, false);
 		root_->Draw(*ctx);
 	}
 

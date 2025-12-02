@@ -43,6 +43,7 @@
 #include "UI/GameSettingsScreen.h"
 #include "UI/OnScreenDisplay.h"
 #include "UI/IconCache.h"
+#include "UI/MiscViews.h"
 
 #if PPSSPP_PLATFORM(ANDROID)
 
@@ -159,7 +160,9 @@ void DeveloperToolsScreen::CreateGeneralTab(UI::LinearLayout *list) {
 	list->Add(new ItemHeader(sy->T("General")));
 
 	list->Add(new CheckBox(&g_Config.bEnableLogging, dev->T("Enable Logging")))->OnClick.Handle(this, &DeveloperToolsScreen::OnLoggingChanged);
-	list->Add(new Choice(dev->T("Logging Channels")))->OnClick.Handle(this, &DeveloperToolsScreen::OnLogConfig);
+	list->Add(new Choice(dev->T("Logging Channels")))->OnClick.Add([this](UI::EventParams &e) {
+		screenManager()->push(new LogConfigScreen());
+	});
 	list->Add(new CheckBox(&g_Config.bEnableFileLogging, dev->T("Log to file")))->SetEnabledPtr(&g_Config.bEnableLogging);
 	list->Add(new CheckBox(&g_Config.bLogFrameDrops, dev->T("Log Dropped Frame Statistics")));
 	if (GetGPUBackend() == GPUBackend::VULKAN) {
@@ -373,16 +376,18 @@ void DeveloperToolsScreen::CreateUITab(UI::LinearLayout *list) {
 	list->Add(new ItemHeader(si->T("Slider test")));
 	list->Add(new Slider(&testSliderValue_, 0, 100, 1, new LinearLayoutParams(FILL_PARENT, WRAP_CONTENT)));
 
+	static const char *positions[] = {"Bottom Left", "Bottom Center", "Bottom Right", "Top Left", "Top Center", "Top Right", "Center Left", "Center Right", "None"};
+
 	list->Add(new ItemHeader(si->T("Notification tests")));
 	list->Add(new Choice(si->T("Error")))->OnClick.Add([&](UI::EventParams &) {
 		std::string str = "Error " + CodepointToUTF8(0x1F41B) + CodepointToUTF8(0x1F41C) + CodepointToUTF8(0x1F914);
 		g_OSD.Show(OSDType::MESSAGE_ERROR, str);
 	});
 	list->Add(new Choice(si->T("Warning")))->OnClick.Add([&](UI::EventParams &) {
-		g_OSD.Show(OSDType::MESSAGE_WARNING, "Warning", "Some\nAdditional\nDetail");
+		g_OSD.Show(OSDType::MESSAGE_WARNING, "Warning, a pretty long warning heading", "Some\nAdditional\nDetail, some of which is very, very long and wide and will need line wrapping on most screens.");
 	});
 	list->Add(new Choice(si->T("Info")))->OnClick.Add([&](UI::EventParams &) {
-		g_OSD.Show(OSDType::MESSAGE_INFO, "Info");
+		g_OSD.Show(OSDType::MESSAGE_INFO, "Info, info info info info info info info info info info");
 	});
 	// This one is clickable
 	list->Add(new Choice(si->T("Success")))->OnClick.Add([&](UI::EventParams &) {
@@ -423,13 +428,14 @@ void DeveloperToolsScreen::CreateUITab(UI::LinearLayout *list) {
 		g_OSD.ShowLeaderboardTracker(1, "", false);
 	});
 
-	static const char *positions[] = {"Bottom Left", "Bottom Center", "Bottom Right", "Top Left", "Top Center", "Top Right", "Center Left", "Center Right", "None"};
-
 	list->Add(new ItemHeader(ac->T("Notifications")));
-	list->Add(new PopupMultiChoice(&g_Config.iAchievementsLeaderboardTrackerPos, ac->T("Leaderboard tracker"), positions, 0, ARRAY_SIZE(positions), I18NCat::DIALOG, screenManager()))->SetEnabledPtr(&g_Config.bAchievementsEnable);
+	list->Add(new PopupMultiChoice(&g_Config.iNotificationPos, "General notifications", positions, 0, ARRAY_SIZE(positions), I18NCat::DIALOG, screenManager()));
+	list->Add(new PopupMultiChoice(&g_Config.iAchievementsLeaderboardTrackerPos, ac->T("Leaderboard tracker"), positions, 0, ARRAY_SIZE(positions), I18NCat::DIALOG, screenManager()));
+	list->Add(new CheckBox(&pretendIngame_, ac->T("Pretend to be in-game (for testing)")));
 
 #ifdef _DEBUG
 	// Untranslated string because this is debug mode only, only for PPSSPP developers.
+	list->Add(new ItemHeader(ac->T("Assert")));
 	list->Add(new Choice("Assert"))->OnClick.Add([=](UI::EventParams &) {
 		_dbg_assert_msg_(false, "Test assert message");
 	});
@@ -625,10 +631,6 @@ void DeveloperToolsScreen::OnOpenTexturesIniFile(UI::EventParams &e) {
 	}
 }
 
-void DeveloperToolsScreen::OnLogConfig(UI::EventParams &e) {
-	screenManager()->push(new LogConfigScreen());
-}
-
 void DeveloperToolsScreen::OnJitDebugTools(UI::EventParams &e) {
 	screenManager()->push(new JitDebugScreen());
 }
@@ -713,9 +715,14 @@ void DeveloperToolsScreen::OnMIPSTracerClearTracer(UI::EventParams &e) {
 }
 
 void DeveloperToolsScreen::update() {
-	UIDialogScreenWithBackground::update();
+	UIBaseDialogScreen::update();
 	allowDebugger_ = !WebServerStopped(WebServerFlags::DEBUGGER);
 	canAllowDebugger_ = !WebServerStopping(WebServerFlags::DEBUGGER);
+
+	// For the UI tab's notification tests.
+	if (pretendIngame_) {
+		g_OSD.NudgeIngameNotifications();
+	}
 }
 
 void DeveloperToolsScreen::MemoryMapTest() {

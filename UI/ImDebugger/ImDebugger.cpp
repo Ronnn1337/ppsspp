@@ -1472,7 +1472,7 @@ void DrawAudioOut(ImConfig &cfg, ImControl &control) {
 		return;
 	}
 
-	if (g_Config.iAudioSyncMode == (int)AudioSyncMode::GRANULAR) {
+	if (g_Config.iAudioPlaybackMode == (int)AudioSyncMode::GRANULAR) {
 		// Show granular stats
 		GranularStats stats;
 		g_granular.GetStats(&stats);
@@ -2797,7 +2797,9 @@ public:
 		if (save_) {
 			section_->Set(key, *value);
 		} else {
-			section_->Get(key, value, defaultValue);
+			if (!section_->Get(key, value)) {
+				*value = defaultValue;
+			}
 		}
 	}
 private:
@@ -2809,7 +2811,7 @@ void ImConfig::SyncConfig(IniFile *ini, bool save) {
 	Syncer sync(save);
 	sync.SetSection(ini->GetOrCreateSection("Windows"));
 	sync.Sync("disasmOpen", &disasmOpen, true);
-	sync.Sync("demoOpen ", &demoOpen, false);
+	sync.Sync("demoOpen", &demoOpen, false);
 	sync.Sync("gprOpen", &gprOpen, false);
 	sync.Sync("fprOpen", &fprOpen, false);
 	sync.Sync("vfpuOpen", &vfpuOpen, false);

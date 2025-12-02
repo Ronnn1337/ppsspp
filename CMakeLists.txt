@@ -884,6 +884,8 @@ add_library(Common STATIC
 	Common/UI/ViewGroup.h
 	Common/UI/ScrollView.cpp
 	Common/UI/ScrollView.h
+	Common/UI/TabHolder.cpp
+	Common/UI/TabHolder.h
 	Common/UI/PopupScreens.cpp
 	Common/UI/PopupScreens.h
 	Common/BitScan.h
@@ -1347,6 +1349,7 @@ elseif(IOS AND NOT LIBRETRO)
 		ios/Controls.h
 		ios/Controls.mm
 		ios/ViewControllerCommon.h
+		ios/ViewControllerCommon.mm
 		ios/ViewController.mm
 		ios/ViewController.h
 		ios/ViewControllerMetal.mm
@@ -1487,6 +1490,7 @@ else()
 		SDL/CocoaBarItems.h
 		SDL/PPSSPPAboutViewController.m
 		SDL/PPSSPPAboutViewController.h
+		SDL/MacCameraHelper.mm
 		UI/DarwinFileSystemServices.mm
 		UI/DarwinFileSystemServices.h
 		Common/Battery/AppleBatteryClient.m
@@ -1501,9 +1505,10 @@ else()
 		set_source_files_properties(SDL/CocoaMetalLayer.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)
 		set_source_files_properties(SDL/CocoaBarItems.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)
 		set_source_files_properties(SDL/PPSSPPAboutViewController.m PROPERTIES COMPILE_FLAGS -fobjc-arc)
+		set_source_files_properties(SDL/MacCameraHelper.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)
 		set_source_files_properties(Common/Battery/AppleBatteryClient.m PROPERTIES COMPILE_FLAGS -fobjc-arc)
 		set_source_files_properties(Common/Render/Text/draw_text_cocoa.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)
-		set(nativeExtraLibs ${nativeExtraLibs} ${COCOA_LIBRARY} ${QUARTZ_CORE_LIBRARY} ${IOKIT_LIBRARY})
+		set(nativeExtraLibs ${nativeExtraLibs} ${COCOA_LIBRARY} ${QUARTZ_CORE_LIBRARY} ${IOKIT_LIBRARY} "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
 
 		if(USE_SYSTEM_LIBSDL2)
 			set(nativeExtraLibs ${nativeExtraLibs} SDL2::SDL2)
@@ -1547,8 +1552,12 @@ list(APPEND NativeAppSource
 	UI/NativeApp.cpp
 	UI/BackgroundAudio.h
 	UI/BackgroundAudio.cpp
+	UI/Background.h
+	UI/Background.cpp
 	UI/ChatScreen.h
 	UI/ChatScreen.cpp
+	UI/BaseScreens.h
+	UI/BaseScreens.cpp
 	UI/DebugOverlay.cpp
 	UI/DebugOverlay.h
 	UI/DevScreens.cpp
@@ -1565,8 +1574,12 @@ list(APPEND NativeAppSource
 	UI/MainScreen.cpp
 	UI/MiscScreens.h
 	UI/MiscScreens.cpp
+	UI/MiscViews.h
+	UI/MiscViews.cpp
 	UI/PauseScreen.h
 	UI/PauseScreen.cpp
+	UI/SimpleDialogScreen.h
+	UI/SimpleDialogScreen.cpp
 	UI/TabbedDialogScreen.h
 	UI/TabbedDialogScreen.cpp
 	UI/GameScreen.h
@@ -1603,6 +1616,8 @@ list(APPEND NativeAppSource
 	UI/SystemInfoScreen.cpp
 	UI/Store.h
 	UI/Store.cpp
+	UI/UploadScreen.h
+	UI/UploadScreen.cpp
 	UI/CwCheatScreen.h
 	UI/CwCheatScreen.cpp
 	UI/InstallZipScreen.h
@@ -2453,6 +2468,8 @@ add_library(${CoreLibName} ${CoreLinkType}
 	Core/Util/MemStick.h
 	Core/Util/GameDB.cpp
 	Core/Util/GameDB.h
+	Core/Util/PathUtil.cpp
+	Core/Util/PathUtil.h
 	Core/Util/PortManager.cpp
 	Core/Util/PortManager.h
 	Core/Util/BlockAllocator.cpp
@@ -2768,11 +2785,16 @@ set(NativeAssets
 	assets/asciifont_atlas.zim
 	assets/asciifont_atlas.meta
 	assets/debugger
+	assets/upload
 	assets/lang
 	assets/shaders
 	assets/themes
 	assets/vfpu
-	assets/Roboto-Condensed.ttf
+	assets/Roboto_Condensed-Regular.ttf
+	assets/Roboto_Condensed-Light.ttf
+	assets/Roboto_Condensed-Bold.ttf
+	assets/Roboto_Condensed-Italic.ttf
+	assets/Inconsolata-Regular.ttf
 	assets/7z.png
 	assets/compat.ini
 	assets/infra-dns.json
@@ -2911,6 +2933,7 @@ if(TargetBin)
 		file(GLOB_RECURSE SHADER_FILES assets/shaders/*)
 		file(GLOB_RECURSE THEME_FILE assets/themes/*)
 		file(GLOB_RECURSE DEBUGGER_FILES assets/debugger/*)
+		file(GLOB_RECURSE WEB_UPLOAD_FILES assets/upload/*)
 		file(GLOB_RECURSE VFPU_FILES assets/vfpu/*)
 
 		if(NOT IOS)
@@ -2922,17 +2945,18 @@ if(TargetBin)
 			set_source_files_properties(${SHADER_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets/shaders")
 			set_source_files_properties(${THEME_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets/themes")
 			set_source_files_properties(${DEBUGGER_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets/debugger")
+			set_source_files_properties(${WEB_UPLOAD_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets/upload")
 			set_source_files_properties(${VFPU_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets/vfpu")
 		endif()
 
 		if(IOS)
 			set(AssetCatalog "${CMAKE_SOURCE_DIR}/ios/assets.xcassets")
-			add_executable(${TargetBin} MACOSX_BUNDLE ${NativeAssets} ${BigFontAssets} ${UIImages} ${AssetCatalog} ${SHADER_FILES} ${THEME_FILE} ${DEBUGGER_FILES} ${FLASH0_FILES} ${LANG_FILES} ${NativeAppSource} "ios/Settings.bundle" "ios/Launch Screen.storyboard")
+			add_executable(${TargetBin} MACOSX_BUNDLE ${NativeAssets} ${BigFontAssets} ${UIImages} ${AssetCatalog} ${SHADER_FILES} ${THEME_FILE} ${DEBUGGER_FILES} ${WEB_UPLOAD_FILES} ${FLASH0_FILES} ${LANG_FILES} ${NativeAppSource} "ios/Settings.bundle" "ios/Launch Screen.storyboard")
 			if(NOT IOS_APP_STORE)
 				file(INSTALL "${CMAKE_SOURCE_DIR}/ext/vulkan/iOS/Frameworks/libMoltenVK.dylib" DESTINATION "${CMAKE_BINARY_DIR}/PPSSPP.app/Frameworks/")
 			endif()
 		else()
-			add_executable(${TargetBin} MACOSX_BUNDLE ${ICON_PATH_ABS} ${NativeAssets} ${BigFontAssets} ${UIImages} ${SHADER_FILES} ${THEME_FILE} ${DEBUGGER_FILES} ${FLASH0_FILES} ${LANG_FILES} ${NativeAppSource})
+			add_executable(${TargetBin} MACOSX_BUNDLE ${ICON_PATH_ABS} ${NativeAssets} ${BigFontAssets} ${UIImages} ${SHADER_FILES} ${THEME_FILE} ${DEBUGGER_FILES} ${WEB_UPLOAD_FILES} ${FLASH0_FILES} ${LANG_FILES} ${NativeAppSource})
 			file(INSTALL "${CMAKE_SOURCE_DIR}/ext/vulkan/macOS/Frameworks/libMoltenVK.dylib" DESTINATION "${CMAKE_BINARY_DIR}/${TargetBin}.app/Contents/Frameworks/")
 			if(USING_QT_UI)
 				add_custom_command(TARGET ${TargetBin} POST_BUILD COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/Qt/macbundle.sh" "${CMAKE_BINARY_DIR}/PPSSPPQt.app")
